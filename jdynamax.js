@@ -1,3 +1,8 @@
+
+function isString(arg) {
+    return typeof arg === typeof '-' || arg instanceof String;
+}
+
 function capitalizeString(txt) {
     if (isString(txt)) {
         let first = txt.substr(0, 1).toUpperCase();
@@ -28,7 +33,7 @@ class JDynaDom {
             this.domType = element.nodeName.toLowerCase();
             this.prevDisplay = element.style['display'] || '';
             this.domElement.innerHTML = element.innerHTML || innerHtml;
-        } else if (typeof element == typeof '-' || element instanceof String) {
+        } else if (isString(element) {
             this.domElement = document.createElement(element.toLowerCase());
             this.domType = element.toLowerCase();
             this.prevDisplay = '';
@@ -99,18 +104,32 @@ class JDynaDom {
             element.domElement.parentNode.insertBefore(this.domElement, element.domElement);
         } else if (element instanceof Element) {
             element.parentNode.insertBefore(this.domElement, element);
+        } else {
+            console.error('Invalid element give')
         }
     }
 
     search(query) {
         if (isString(query) && query.trim() != '') {
-            return new JDynaDom( this.domElement.querySelector(query) );
+            let element = this.domElement.querySelector(query);
+            if (element) {
+                return new JDynaDom(element);
+            } else {
+                console.warning('Element not found!')
+                return null;
+            }
         }
     }
 
     static docSearch(query) {
         if (isString(query) && query.trim() != '') {
-            return new JDynaDom( document.querySelector(query) );
+            let element = document.querySelector(query);
+            if (element) {
+                return new JDynaDom(element);
+            } else {
+                console.warning('Element not found!')
+                return null;
+            }
         }
     }
 
@@ -151,14 +170,18 @@ class JDynaDom {
     }
 
     id(id = undefined) {
-        if (id == undefined) {
+        if (id === undefined) {
             return this.domElement.id;
         }
+        if (id === null) {
+            return this.domElement.id = '';
+        }
         this.domElement.id = id;
+        return this;
     }
 
     class(cls = undefined) {
-        if (cls == undefined || cls == false || cls == null) {
+        if (cls == undefined || cls == false || cls == null) { // Need to clean
             return this.domElement.className;
         }
         if (isString(cls)) {
@@ -185,7 +208,7 @@ class JDynaDom {
         }
     }
 
-    getListeners(eventName = undefined) {
+    getListeners(eventName = false) {
         if (eventName) {
             return this.domElement.listeners[eventName];
         } else {
@@ -209,6 +232,9 @@ class JDynaDom {
     }
 
     removeListener(eventName, fnx = undefined) {
+        if (!this.domElement.listeners[eventName]) { // To clean
+            return;
+        }
         if (this.domElement.listeners[eventName].length > 0) {
             if (fnx) {
                 if (this.domElement.listeners[eventName].includes(fnx)) {
@@ -261,13 +287,9 @@ class JDynaButton extends JDynaDom {
 
 class JDynaTable extends JDynaDom {
     constructor(arg0 = undefined, arg1 = undefined){
-        if (arg0 instanceof Element) {
+        if (arg0 instanceof Element || arg0 instanceof JDynaDom) {
             super(arg0);
-        } else if (arg0 instanceof JDynaDom) {
-            super(arg0);
-        } else if (arg1 instanceof Element) {
-            super(arg1);
-        } else if (arg1 instanceof JDynaDom) {
+        } else if (arg1 instanceof Element || arg1 instanceof JDynaDom) {
             super(arg1);
         } else {
             super('table');
@@ -279,8 +301,7 @@ class JDynaTable extends JDynaDom {
 
     tryToDisplay(data) {
         if (Array.isArray(data) || typeof data == typeof {} || data instanceof JDynaTableData) {
-            this.displayData(data);
-            return true;
+            return this.displayData(data);
         } else {
             return false;
         }
@@ -288,7 +309,8 @@ class JDynaTable extends JDynaDom {
 
     displayData(data) {
         if (typeof data != typeof [] || typeof data != typeof {} || ! data instanceof JDynaTableData) {
-            return 'Invalid-Argument'
+            console.error('Invalid data set\nData set not supported');
+            return false;
         }
         this.data = data;
         let tableContents = '';
@@ -331,6 +353,8 @@ class JDynaTable extends JDynaDom {
                     tableContents += '</tr>';
                 }
             }
+        } else { // Fail safe... how you could end up here is beyond me
+            return false;
         }
         return this.html(tableContents);
     }
@@ -353,9 +377,13 @@ class JDynaTableData {
     constructor(headers = [], rows = []) {
         if (Array.isArray(headers)) {
             this.headers = headers;
+        } else {
+            this.headers = []
         }
         if (Array.isArray(rows)) {
             this.rows = rows;
+        } else {
+            this.rows = []
         }
     }
 
@@ -403,8 +431,4 @@ class JDynaTableData {
         return data;
     }
 
-}
-
-function isString(arg) {
-    return typeof arg == typeof '-' || arg instanceof String;
 }
