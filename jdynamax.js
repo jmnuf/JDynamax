@@ -11,21 +11,32 @@ function capitalizeString(txt) {
     return null;
 }
 
+JDynamax = {};
+
 HTMLElement.prototype.realAddEventListener = HTMLElement.prototype.addEventListener;
+HTMLElement.prototype.realRemoveEventListener = HTMLElement.prototype.removeEventListener;
 
 HTMLElement.prototype.listeners = {};
 
-HTMLElement.prototype.addEventListener = function(name, fnx, c){
+HTMLElement.prototype.addEventListener = function(name, fnx, c) {
     this.realAddEventListener(name, fnx, c); 
-    if (this.listeners[name]) {
-        this.listeners[name].push(fnx);
-    } else {
+    if (!this.listeners[name]) {
         this.listeners[name] = [];
-        this.listeners[name].push(fnx);
     }
+    this.listeners[name].push(fnx);
 };
 
-// Base class
+HTMLElement.prototype.removeEventListener = function(name, fnx) {
+    this.realRemoveEventListener(name, fnx);
+    if (this.listeners[name]) {
+        if (typeof(fnx) != typeof(10)) {
+            this.listeners[name] = this.listeners[name].filter((f) => {return f != fnx});
+        } else if (!isNaN(fnx)) {
+            this.listeners[name] = this.listeners[name].filter((_, i) => {return i != fnx});
+        }
+    }
+}
+
 class JDynaDom {
     constructor(element, innerHtml = '') {
         if (element instanceof Element) {
@@ -33,7 +44,7 @@ class JDynaDom {
             this.domType = element.nodeName.toLowerCase();
             this.prevDisplay = element.style['display'] || '';
             this.domElement.innerHTML = element.innerHTML || innerHtml;
-        } else if (isString(element) {
+        } else if (isString(element)) {
             this.domElement = document.createElement(element.toLowerCase());
             this.domType = element.toLowerCase();
             this.prevDisplay = '';
@@ -85,7 +96,7 @@ class JDynaDom {
         if (parent instanceof Element) {
             // parent.appendChild(this.domElement);
             return new JDynaDom(parent).child(this);
-        } else if (typeof parent == typeof '' || parent instanceof String) {
+        } else if (isString(parent)) {
             let p = document.querySelector(parent);
             if (p) {
                 return new JDynaDom(p).child(this);
@@ -104,32 +115,24 @@ class JDynaDom {
             element.domElement.parentNode.insertBefore(this.domElement, element.domElement);
         } else if (element instanceof Element) {
             element.parentNode.insertBefore(this.domElement, element);
-        } else {
-            console.error('Invalid element give')
+        }
+    }
+
+    createElement(element, html = '') {
+        if (isString(element)) {
+            let d = document.createElement(element.toLowerCase());
+            d.innerHTML = `${html}`;
+            this.child(d);
+            return new JDynaDom(d);
         }
     }
 
     search(query) {
         if (isString(query) && query.trim() != '') {
-            let element = this.domElement.querySelector(query);
-            if (element) {
-                return new JDynaDom(element);
-            } else {
-                console.warning('Element not found!')
-                return null;
-            }
-        }
-    }
-
-    static docSearch(query) {
-        if (isString(query) && query.trim() != '') {
-            let element = document.querySelector(query);
-            if (element) {
-                return new JDynaDom(element);
-            } else {
-                console.warning('Element not found!')
-                return null;
-            }
+            let child = this.domElement.querySelector(query);
+            if (child) {
+                return new JDynaDom( child );
+            } else return null;
         }
     }
 
@@ -170,20 +173,13 @@ class JDynaDom {
     }
 
     id(id = undefined) {
-        if (id === undefined) {
+        if (id == undefined) {
             return this.domElement.id;
         }
-        if (id === null) {
-            return this.domElement.id = '';
-        }
         this.domElement.id = id;
-        return this;
     }
 
     class(cls = undefined) {
-        if (cls == undefined || cls == false || cls == null) { // Need to clean
-            return this.domElement.className;
-        }
         if (isString(cls)) {
             if (cls.trim() != '') {
                 if (cls.includes(' ')) {
@@ -208,7 +204,7 @@ class JDynaDom {
         }
     }
 
-    getListeners(eventName = false) {
+    getListeners(eventName = undefined) {
         if (eventName) {
             return this.domElement.listeners[eventName];
         } else {
@@ -216,23 +212,22 @@ class JDynaDom {
         }
     }
 
-    addListener(eventName, fnx, appendEv) {
+    addListener(eventName, fnx, appendEv = false) {
         if ( ! this.domElement.listeners[eventName] ) {
             this.domElement.listeners[eventName] = [];
         }
         let count = this.domElement.listeners[eventName].length;
-        if (!appendEv && count > 1) {
-            for (let listener of this.domElement.listeners[eventName]){
+        if (!appendEv && count > 0) {
+            for (let listener of this.domElement.listeners[eventName]) {
                 this.removeListener(eventName, listener);
             }
-            this.listeners[eventName] = [];
         }
         this.domElement.addEventListener(eventName, fnx);
-        this.listeners[eventName].push(fnx);
     }
 
     removeListener(eventName, fnx = undefined) {
-        if (!this.domElement.listeners[eventName]) { // To clean
+        if (!this.domElement.listeners[eventName]) {
+            console.warn('This element has no listeners to erase');
             return;
         }
         if (this.domElement.listeners[eventName].length > 0) {
@@ -248,6 +243,8 @@ class JDynaDom {
         }
     }
 }
+
+JDynamax.dom = (element, innerHtml = undefined) => { return new JDynaDom(element, innerHtml) };
 
 class JDynaButton extends JDynaDom {
     constructor(innerHTML = '', onclick = false, obj = undefined) {
@@ -267,23 +264,25 @@ class JDynaButton extends JDynaDom {
 
     onclick(fnx, appendEv = false) {
         if(fnx == undefined) {
-            return this.onclickFnx;
+            return this.domElement.listeners['click'];
         }
         this.onclickFnx = fnx;
         if (!appendEv) {
             this.removeListener('click');
         }
-        this.addListener('click', this.onclickFnx);
+        this.addListener('click', fnx);
     }
 
     click() {
         this.onclickFnx();
     }
 
-    static createFrom(domElement, innerHTML = '', onclick = function() { console.log('button pressed') }) {
-        return (innerHTML, onclick, domElement);
+    static createFrom(domElement, innerHTML = undefined, onclick = false) {
+        return new JDynaButton(innerHTML, onclick, domElement);
     }
 }
+
+JDynamax.btn = (innerHTML, onclick = false, obj = undefined) => { return new JDynaButton(innerHTML, onclick, obj) };
 
 class JDynaTable extends JDynaDom {
     constructor(arg0 = undefined, arg1 = undefined){
@@ -301,18 +300,31 @@ class JDynaTable extends JDynaDom {
 
     tryToDisplay(data) {
         if (Array.isArray(data) || typeof data == typeof {} || data instanceof JDynaTableData) {
-            return this.displayData(data);
+            this.displayData(data);
+            return true;
         } else {
             return false;
         }
     }
 
-    displayData(data) {
-        if (typeof data != typeof [] || typeof data != typeof {} || ! data instanceof JDynaTableData) {
-            console.error('Invalid data set\nData set not supported');
-            return false;
+    displayData(tdata) {
+        let data;
+        if (tdata) {
+            data = tdata;
+            if (typeof data != typeof [] || typeof data != typeof {} || ! data instanceof JDynaTableData) {
+                if (!this.data) {
+                    return 'Invalid-Argument'
+                } else {
+                    data = this.data;
+                }
+            } else {
+                this.data = data;
+            }
+        } else if (this.data) {
+            data = this.data;
+        } else {
+            throw new Error('InvalidArgument: Can\'t display undefined data');
         }
-        this.data = data;
         let tableContents = '';
         if (data instanceof JDynaTableData) {
             data = data.getDataForTable();
@@ -338,14 +350,17 @@ class JDynaTable extends JDynaDom {
                 }
             }
         } else if (typeof data == typeof {}) {
+            let madeHeadersObj = false;
             for(let key in data) {
-                if (key.toLowerCase() == 'headers') {
+                if (Object.keys(data).includes('headers') && !madeHeadersObj) {
                     tableContents += '<thead><tr>';
-                    for(let col in data[key]) {
-                        tableContents += '<th>' + data[key][col] + '</th>';
+                    for(let col in data['headers']) {
+                        tableContents += '<th>' + data['headers'][col] + '</th>';
                     }
                     tableContents += '</tr></thead>';
-                } else {
+                }
+                madeHeadersObj = true;
+                if (`${key}` != 'headers') {
                     tableContents += '<tr>';
                     for(let col in data[key]) {
                         tableContents += '<td>' + data[key][col] + '</td>';
@@ -353,13 +368,11 @@ class JDynaTable extends JDynaDom {
                     tableContents += '</tr>';
                 }
             }
-        } else { // Fail safe... how you could end up here is beyond me
-            return false;
         }
         return this.html(tableContents);
     }
 
-    static createTableData(headers, rows){
+    static createTableData(headers = ['Head 1', 'Head 2', 'Head 3'], rows = [ ['Space 1:1', 'Space 1:2', 'Space 1:3'], ['Space 2:1', 'Space 2:2', 'Space 2:3'] ]){
         let data = [];
         let row = {};
         for (let j = 0; j < rows.length; j++) {
@@ -373,17 +386,19 @@ class JDynaTable extends JDynaDom {
     }
 }
 
+JDynamax.table = (arg0 = undefined, arg1 = undefined) => { return new JDynaTable(arg0, arg1) };
+
 class JDynaTableData {
     constructor(headers = [], rows = []) {
         if (Array.isArray(headers)) {
             this.headers = headers;
         } else {
-            this.headers = []
+            this.headers = [];
         }
         if (Array.isArray(rows)) {
             this.rows = rows;
         } else {
-            this.rows = []
+            this.rows = [];
         }
     }
 
@@ -391,7 +406,10 @@ class JDynaTableData {
         this.headers.push(header);
     }
 
-    createHeaders( ...heads) {
+    createHeaders(...heads) {
+        if (!Array.isArray(heads)) {
+            heads = [heads];
+        }
         this.headers = heads;
     }
 
@@ -405,6 +423,21 @@ class JDynaTableData {
             row.push(cols[i]);
         }
         this.addRow(row);
+    }
+
+    createRows(...rows) {
+        let newrows = [];
+        if (!Array.isArray(rows)) {
+            rows = [ rows ];
+        }
+        for (let row of rows) {
+            if (Array.isArray(row)) {
+                newrows.push(row);
+            } else {
+                newrows.push( [row] );
+            }
+        }
+        this.rows = newrows;
     }
 
     getDataForTable() {
@@ -431,4 +464,16 @@ class JDynaTableData {
         return data;
     }
 
+}
+
+JDynamax.tableData = (headers = [], rows = []) => { return new JDynaTableData(headers, rows) };
+
+JDynamax.query = function DynaQuery(element) {
+    if (element instanceof Element) {
+        return new JDynaDom(element);
+    } else if (isString(element)) {
+        let q = document.querySelector(element);
+        if (q) return new JDynaDom(q);
+    }
+    return null;
 }
